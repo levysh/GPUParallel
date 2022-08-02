@@ -1,6 +1,6 @@
 import logging
 from functools import partial
-from multiprocessing import Pool, Manager, Queue
+from multiprocessing import Pool, Manager, Queue, set_start_method
 from typing import List, Iterable, Optional, Callable, Union, Generator
 
 from gpuparallel.utils import log, import_tqdm
@@ -71,6 +71,7 @@ class GPUParallel:
             Class creates only one worker ([device_id='cuda:0']) and run it in the same process (for better debugging).
 
         """
+        print("YES")
         assert not (n_gpu is not None and device_ids is not None), "Both 'n_gpu' and 'device_ids' cannot de filled"
 
         self.n_workers_per_gpu = n_workers_per_gpu
