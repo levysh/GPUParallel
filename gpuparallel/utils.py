@@ -1,4 +1,4 @@
-import multiprocessing as mp
+import billiard as mp
 from functools import partial
 
 log = mp.get_logger()
