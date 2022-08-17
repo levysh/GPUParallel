@@ -1,4 +1,5 @@
 import logging
+import os
 from functools import partial
 from billiard import Pool, Manager, Queue
 from typing import List, Iterable, Optional, Callable, Union, Generator
@@ -17,6 +18,7 @@ def _init_worker(gpu_queue: Queue, init_fn: Optional[Callable] = None):
         fmt = logging.Formatter(f"[%(levelname)s/Worker-{worker_id}({device_id})]:%(message)s")
         log.handlers[0].setFormatter(fmt)
 
+    log.info(f"Worker #{worker_id} pid={os.getpid()} ppid={os.getppid()}")
     log.debug(f"Worker #{worker_id} with GPU{device_id} initialized.")
 
 
