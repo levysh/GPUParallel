@@ -2,6 +2,7 @@ import logging
 import weakref
 from functools import partial
 from billiard import Pool, Manager, Queue
+from billiard import active_children
 from typing import List, Iterable, Optional, Callable, Union, Generator
 
 from gpuparallel.utils import log, import_tqdm, kill_child_processes
@@ -107,9 +108,7 @@ class GPUParallel:
                 processes=self.n_gpu * self.n_workers_per_gpu, initializer=initializer, maxtasksperchild=None
             )
 
-            self._finalizer = weakref.finalize(
-                self, self._close_pool,
-                warn_message="Implicitly closing up pool.")
+            self._finalizer = weakref.finalize(self, self._close_pool)
 
             self.result_queue = m.Queue()
         else:  # debug mode; run init in the same process
@@ -119,7 +118,7 @@ class GPUParallel:
 
     def _close_pool(self):
         try:
-            self.pool.close()
+            self.pool.terminate()
             self.pool.join()
         except Exception:
             log.warning("Can't close and join process pool.", exc_info=True)
@@ -155,8 +154,9 @@ class GPUParallel:
     def _call_async(self, tasks: Iterable) -> Generator:
         # Submit all tasks to pool
         n_tasks = 0
+        apply_async_results = []
         for task_idx, task in enumerate(tasks):
-            self.pool.apply_async(_run_task, (task, task_idx, self.result_queue, self.ignore_errors))
+            apply_async_results.append(self.pool.apply_async(_run_task, (task, task_idx, self.result_queue, self.ignore_errors)))
             n_tasks += 1
         log.debug(f"Submitted {n_tasks} tasks")
 
@@ -180,6 +180,11 @@ class GPUParallel:
                     task_idx, result = self.result_queue.get()
                     yield result
                     pbar.update(1)
+
+        for apply_async_result in apply_async_results:
+            apply_async_result.wait()
+        children = active_children()
+        print(f'Active children: {len(children)}')
         log.debug("All results are received!")
 
     def __call__(self, tasks: Iterable[Callable]) -> Generator:
