@@ -63,9 +63,6 @@ def import_tqdm(progressbar=True):
     return TqdmStub
 
 def kill_child_processes():
-    parent_id = os.getpid()
-    ps_command = subprocess.Popen("ps -o pid --ppid %d --noheaders" % parent_id, shell=True, stdout=subprocess.PIPE)
-    ps_output = ps_command.stdout.read()
-    retcode = ps_command.wait()
-    for pid_str in ps_output.strip().split("\n")[:-1]:
-        os.kill(int(pid_str), signal.SIGTERM)
+    parent = psutil.Process(os.getpid())
+    for child in parent.children(recursive=True):
+        child.kill()

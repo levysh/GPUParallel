@@ -1,4 +1,5 @@
 import logging
+import weakref
 from functools import partial
 from billiard import Pool, Manager, Queue
 from typing import List, Iterable, Optional, Callable, Union, Generator
@@ -106,7 +107,7 @@ class GPUParallel:
                 processes=self.n_gpu * self.n_workers_per_gpu, initializer=initializer, maxtasksperchild=None
             )
 
-            self._finalizer = _weakref.finalize(
+            self._finalizer = weakref.finalize(
                 self, self._close_pool,
                 warn_message="Implicitly closing up pool.")
 
@@ -123,6 +124,11 @@ class GPUParallel:
         except Exception:
             log.warning("Can't close and join process pool.", exc_info=True)
 
+        if self.kill_all_children_on_exit:
+            log.info("Kill all children of the current process to prevent hangs in the next run")
+            kill_child_processes()
+            log.info("All children killed")
+
     def close_pool(self):
         if self._finalizer and self._finalizer.detach():
             self._close_pool()
@@ -134,11 +140,6 @@ class GPUParallel:
         """
 
         self.close_pool()
-
-        if self.kill_all_children_on_exit:
-            log.info("Kill all children of the current process to prevent hangs in the next run")
-            kill_child_processes()
-            log.info("All children killed")
 
     def _call_sync(self, tasks: Iterable) -> List:
         log.warning(f"Debug mode is turned on. All tasks will be run in the main process.")
