@@ -81,6 +81,7 @@ class GPUParallel:
         self.ignore_errors = ignore_errors
         self.kill_all_children_on_exit = kill_all_children_on_exit
         self.debug_mode = debug
+        self._finalizer = None
 
         if device_ids is not None:
             assert len(device_ids) > 0, "len(device_ids) must be > 0"
@@ -105,23 +106,34 @@ class GPUParallel:
                 processes=self.n_gpu * self.n_workers_per_gpu, initializer=initializer, maxtasksperchild=None
             )
 
+            self._finalizer = _weakref.finalize(
+                self, self._close_pool,
+                warn_message="Implicitly closing up pool.")
+
             self.result_queue = m.Queue()
         else:  # debug mode; run init in the same process
             log.warning("Debug mode. All tasks will be run in main process for debug purposes.")
             if init_fn is not None:
                 init_fn(worker_id=0, device_id=self.device_ids[0])
 
+    def _close_pool(self):
+        try:
+            self.pool.close()
+            self.pool.join()
+        except Exception:
+            log.warning("Can't close and join process pool.", exc_info=True)
+
+    def close_pool(self):
+        if self._finalizer and self._finalizer.detach():
+            self._close_pool()
+
     def __del__(self):
         """
         Created pool will be freed only during this destructor.
         This allows to use ``__call__`` multiple times with the same initialized workers.
         """
-        if not self.debug_mode:
-            try:
-                self.pool.close()
-                self.pool.join()
-            except Exception as e:
-                log.warning("Can't close and join process pool.", exc_info=True)
+
+        self.close_pool()
 
         if self.kill_all_children_on_exit:
             log.info("Kill all children of the current process to prevent hangs in the next run")
@@ -163,7 +175,7 @@ class GPUParallel:
                     del result_cache[return_task_idx]
         else:
             with tqdm(total=n_tasks, desc=self.pbar_description) as pbar:
-                for return_task_idx in range(n_tasks):
+                for _ in range(n_tasks):
                     task_idx, result = self.result_queue.get()
                     yield result
                     pbar.update(1)
